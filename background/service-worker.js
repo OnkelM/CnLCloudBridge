@@ -159,17 +159,25 @@ async function handlePickDevice(requestId, deviceId) {
 async function handleCnlLinks({ urls, source, passwords, error }) {
   gcPending();
   if (error === "decrypt_failed") {
-    chrome.notifications.create({
-      type: "basic",
-      iconUrl: chrome.runtime.getURL("icons/icon48.png"),
-      title: "MyJDownloader",
-      message: "Click'n'Load-Entschlüsselung fehlgeschlagen.",
-    });
+    notify("Click'n'Load-Entschlüsselung fehlgeschlagen.");
     return;
   }
   if (!urls?.length) return;
-  if (!cnlEnabled) return;
-
+  if (!cnlEnabled) {
+    notify("Click'n'Load über die Extension ist deaktiviert.");
+    return;
+  }
+  if (!session?.sessionToken) {
+    try { await ensureSessionAlive(); } catch {
+      notify("Bitte erst einloggen, dann Click'n'Load erneut versuchen.");
+      return;
+    }
+  }
+  const devices = await getDevices().catch(() => []);
+  if (!devices.length) {
+    notify("Keine Geräte verbunden.");
+    return;
+  }
   const requestId = makeRequestId();
   pending.set(requestId, { urls, source: source ?? "", passwords: passwords ?? "", createdAt: Date.now() });
   await openPickerPopup();
