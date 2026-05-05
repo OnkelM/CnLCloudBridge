@@ -133,3 +133,30 @@ export async function disconnect(session) {
     session.deviceEncToken = null;
   }
 }
+
+export async function listDevices(session) {
+  if (!session.sessionToken || !session.serverEncToken) {
+    throw new MyJdApiError("Nicht eingeloggt", "NOT_LOGGED_IN");
+  }
+  const rid = nextRid(session);
+  const path = "/my/listdevices";
+  const query = `?sessiontoken=${session.sessionToken}&rid=${rid}`;
+  const data = await callApi(path, query, session.serverEncToken, null);
+  return Array.isArray(data?.list) ? data.list : [];
+}
+
+export async function deviceCall(session, deviceId, action, params = []) {
+  if (!session.sessionToken || !session.deviceEncToken) {
+    throw new MyJdApiError("Nicht eingeloggt", "NOT_LOGGED_IN");
+  }
+  const rid = nextRid(session);
+  const path = `/t_${session.sessionToken}_${deviceId}${action}`;
+  const query = "";
+  const body = JSON.stringify({
+    apiVer: 1,
+    url: action,
+    params: params.map((p) => (typeof p === "string" ? p : JSON.stringify(p))),
+    rid,
+  });
+  return callApi(path, query, session.deviceEncToken, body);
+}
