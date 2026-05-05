@@ -268,4 +268,75 @@ document.getElementById("picker-cancel").addEventListener("click", async () => {
   window.close();
 });
 
+let port = null;
+try {
+  port = chrome.runtime.connect({ name: POPUP_PORT_NAME });
+  port.onMessage.addListener((msg) => {
+    if (msg?.type !== MSG.DEVICE_STATS) return;
+    if (msg.error) {
+      applyDeviceStatsError(msg.deviceId);
+      return;
+    }
+    applyDeviceStats(msg.deviceId, msg.stats);
+  });
+  window.addEventListener("unload", () => {
+    try { port.disconnect(); } catch {}
+  });
+} catch (e) {
+  console.warn("Popup port connect failed:", e);
+}
+
+function findCard(deviceId) {
+  return document.querySelector(`#devices-list li.device-card[data-device-id="${CSS.escape(deviceId)}"]`);
+}
+
+function applyDeviceStats(deviceId, raw) {
+  const card = findCard(deviceId);
+  if (!card) return;
+  const stats = card.querySelector(".device-card-stats");
+  if (!stats) return;
+  stats.classList.remove("muted-all");
+
+  const agg = raw?.aggregatedNumbers ?? raw ?? {};
+  const jdState = raw?.jdState ?? raw?.state ?? "IDLE";
+
+  const speed = agg.speed ?? 0;
+  const finished = agg.finishedLinks ?? agg.finished ?? agg.linksFinished ?? 0;
+  const loaded = agg.bytesLoaded ?? agg.loadedBytes ?? 0;
+  const total = agg.bytesTotal ?? agg.totalBytes ?? 0;
+
+  setStatVal(card, "speed", formatSpeed(speed));
+  setStateDot(card, jdState);
+  setStatVal(card, "finished", String(finished));
+  setStatVal(card, "bytes", `${formatBytes(loaded)} / ${formatBytes(total)}`);
+
+  const btn = card.querySelector(".play-pause");
+  if (btn && !btn.disabled) {
+    const running = String(jdState).toUpperCase() === "RUNNING";
+    btn.dataset.state = running ? "running" : "paused";
+    btn.textContent = running ? "⏸" : "▶";
+  }
+}
+
+function applyDeviceStatsError(deviceId) {
+  const card = findCard(deviceId);
+  if (!card) return;
+  const stats = card.querySelector(".device-card-stats");
+  if (stats) stats.classList.add("muted-all");
+}
+
+function setStatVal(card, key, value) {
+  const el = card.querySelector(`.stat.${key} .val`);
+  if (el) el.textContent = value;
+}
+
+function setStateDot(card, jdState) {
+  const dot = card.querySelector(".stat.state .dot");
+  const val = card.querySelector(".stat.state .val");
+  if (!dot || !val) return;
+  const s = String(jdState).toUpperCase();
+  dot.className = "dot " + (s === "RUNNING" ? "running" : s === "PAUSED" ? "paused" : "idle");
+  val.textContent = s;
+}
+
 refreshState();

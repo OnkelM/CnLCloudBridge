@@ -73,3 +73,7 @@ form button[disabled] { opacity: 0.6; cursor: progress; }
 .account .ico { font-size: 16px; }
 .logout-btn { width: 100%; padding: 10px; background: #b91c1c; color: #fff; border: 0; border-radius: 4px; font-weight: 600; cursor: pointer; }
 .logout-btn:hover { background: #991b1b; }
+
+.device-card-stats.muted-all .val,
+.device-card-stats.muted-all .ico { opacity: 0.4; }
+.device-card-stats.muted-all .stat.state .dot { opacity: 0.4; }
