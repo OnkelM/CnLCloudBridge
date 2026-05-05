@@ -42,9 +42,10 @@ export async function deriveSecret(email, password, domain) {
 }
 
 export async function updateToken(oldToken, newTokenHex) {
-  const concat = new Uint8Array(oldToken.length + newTokenHex.length);
+  const newTokenBytes = hexToBytes(newTokenHex);
+  const concat = new Uint8Array(oldToken.length + newTokenBytes.length);
   concat.set(oldToken, 0);
-  concat.set(utf8(newTokenHex), oldToken.length);
+  concat.set(newTokenBytes, oldToken.length);
   return new Uint8Array(await crypto.subtle.digest("SHA-256", concat));
 }
 
