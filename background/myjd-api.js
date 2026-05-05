@@ -186,6 +186,19 @@ export async function addLinks(session, deviceId, { links, sourceUrl, autostart 
   return deviceCall(session, deviceId, "/linkgrabberv2/addLinks", [param]);
 }
 
+export async function pollDevice(session, deviceId) {
+  const params = [{ jdState: true, aggregatedNumbers: true }];
+  return deviceCall(session, deviceId, "/polling/poll", params);
+}
+
+export async function startDownloads(session, deviceId) {
+  return deviceCall(session, deviceId, "/downloadcontroller/start", []);
+}
+
+export async function pauseDownloads(session, deviceId, paused) {
+  return deviceCall(session, deviceId, "/downloadcontroller/pause", [!!paused]);
+}
+
 export async function connectWithSecret(session) {
   if (!session.email || !session.loginSecret || !session.deviceSecret) {
     throw new MyJdApiError("Keine persistierten Credentials", "NO_CREDS");
