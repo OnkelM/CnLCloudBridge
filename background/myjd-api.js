@@ -5,6 +5,7 @@ import {
   aesCbcDecrypt,
   aesCbcEncrypt,
   bytesToHex,
+  hexToBytes,
   utf8,
 } from "../shared/crypto.js";
 
@@ -42,16 +43,10 @@ export class MyJdSession {
   static restorePersistent({ email, loginSecret, deviceSecret }) {
     const s = new MyJdSession();
     s.email = email;
-    s.loginSecret = hexToBytesLocal(loginSecret);
-    s.deviceSecret = hexToBytesLocal(deviceSecret);
+    s.loginSecret = hexToBytes(loginSecret);
+    s.deviceSecret = hexToBytes(deviceSecret);
     return s;
   }
-}
-
-function hexToBytesLocal(hex) {
-  const out = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
-  return out;
 }
 
 function nextRid(session) {
