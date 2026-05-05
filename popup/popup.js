@@ -7,6 +7,8 @@ const views = {
 };
 const loadingView = document.getElementById("view-loading");
 
+let currentPendingId = null;
+
 function showView(name) {
   loadingView.hidden = true;
   for (const v of Object.values(views)) v.hidden = true;
@@ -30,6 +32,7 @@ async function refreshState() {
 
 function render(state) {
   if (!state) return;
+  currentPendingId = state?.pending?.id ?? null;
   if (state.view === POPUP_VIEW.LOGGED_OUT) {
     showView(POPUP_VIEW.LOGGED_OUT);
     const errEl = document.getElementById("login-error");
@@ -42,7 +45,7 @@ function render(state) {
   } else if (state.view === POPUP_VIEW.IDLE) {
     renderIdle(state);
   } else if (state.view === POPUP_VIEW.PICKER) {
-    showView(POPUP_VIEW.PICKER);
+    renderPicker(state);
   }
 }
 
@@ -84,6 +87,50 @@ function renderIdle(state) {
   }
 }
 
+function renderPicker(state) {
+  showView(POPUP_VIEW.PICKER);
+  document.getElementById("picker-email").textContent = state.email ?? "";
+  const urls = state.pending?.urls ?? [];
+  document.getElementById("picker-count").textContent = `${urls.length} Link${urls.length === 1 ? "" : "s"}`;
+  const ulUrls = document.getElementById("picker-urls");
+  ulUrls.innerHTML = "";
+  for (const u of urls.slice(0, 3)) {
+    const li = document.createElement("li");
+    li.textContent = u;
+    ulUrls.appendChild(li);
+  }
+  if (urls.length > 3) {
+    const li = document.createElement("li");
+    li.className = "more";
+    li.textContent = `+${urls.length - 3} weitere`;
+    ulUrls.appendChild(li);
+  }
+  const ulDev = document.getElementById("picker-devices");
+  const empty = document.getElementById("picker-empty");
+  const errEl = document.getElementById("picker-error");
+  ulDev.innerHTML = "";
+  errEl.hidden = true;
+  if (!state.devices?.length) {
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+  for (const d of state.devices) {
+    const li = document.createElement("li");
+    const isOnline = d.status === "ONLINE" || d.status === undefined;
+    li.className = "device " + (isOnline ? "online" : "offline");
+    li.dataset.deviceId = d.id;
+    const dot = document.createElement("span");
+    dot.className = "dot " + (isOnline ? "online" : "offline");
+    li.appendChild(dot);
+    const nm = document.createElement("span");
+    nm.className = "name";
+    nm.textContent = d.name ?? d.id;
+    li.appendChild(nm);
+    ulDev.appendChild(li);
+  }
+}
+
 document.getElementById("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
@@ -122,6 +169,30 @@ document.getElementById("refresh-devices-btn").addEventListener("click", async (
     return;
   }
   await refreshState();
+});
+
+document.getElementById("picker-devices").addEventListener("click", async (e) => {
+  const li = e.target.closest("li.device");
+  if (!li) return;
+  if (li.classList.contains("offline")) return;
+  const requestId = currentPendingId;
+  const deviceId = li.dataset.deviceId;
+  const errEl = document.getElementById("picker-error");
+  errEl.hidden = true;
+  li.classList.add("sending");
+  const res = await send({ type: MSG.PICK_DEVICE, requestId, deviceId });
+  if (res?.error) {
+    li.classList.remove("sending");
+    errEl.textContent = res.error;
+    errEl.hidden = false;
+    return;
+  }
+  window.close();
+});
+
+document.getElementById("picker-cancel").addEventListener("click", async () => {
+  if (currentPendingId) await send({ type: MSG.CANCEL_PENDING, requestId: currentPendingId });
+  window.close();
 });
 
 refreshState();

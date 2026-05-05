@@ -42,7 +42,22 @@
           <p class="error" id="devices-error" hidden></p>
         </div>
       </section>
-      <section id="view-picker" hidden></section>
+      <section id="view-picker" hidden>
+        <header class="bar">
+          <span class="email" id="picker-email"></span>
+          <button class="icon-btn" id="picker-cancel" title="Abbrechen">✕</button>
+        </header>
+        <div class="row">
+          <div class="row-head"><span>Click'n'Load</span><span id="picker-count"></span></div>
+          <ul class="urls" id="picker-urls"></ul>
+        </div>
+        <div class="row">
+          <div class="row-head"><span>An welches Gerät?</span></div>
+          <ul class="devices clickable" id="picker-devices"></ul>
+          <p class="empty" id="picker-empty" hidden>Keine Geräte verbunden.</p>
+        </div>
+        <p class="error" id="picker-error" hidden></p>
+      </section>
       <section id="view-loading">Lade…</section>
     </div>
     <script type="module" src="popup.js"></script>
