@@ -349,6 +349,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           await handleCnlLinks(msg);
           sendResponse({ ok: true });
           break;
+        case MSG.START_DOWNLOADS:
+          await ensureSessionAlive();
+          await withReconnectRetry(() => startDownloads(session, msg.deviceId));
+          sendResponse({ ok: true });
+          break;
+        case MSG.PAUSE_DOWNLOADS:
+          await ensureSessionAlive();
+          await withReconnectRetry(() => pauseDownloads(session, msg.deviceId, msg.paused));
+          sendResponse({ ok: true });
+          break;
         case MSG.GET_PENDING: {
           gcPending();
           const entries = [...pending.entries()].map(([id, v]) => ({ id, ...v }));
