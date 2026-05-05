@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+  <body>
+    <h1>CnL-Test</h1>
+    <button id="plain">flash/add</button>
+    <button id="crypted">flash/addcrypted2</button>
+    <pre id="out"></pre>
+    <script>
+      const out = document.getElementById("out");
+      document.getElementById("plain").onclick = async () => {
+        const body = new URLSearchParams({
+          urls: "https://example.com/file1.zip\nhttps://example.com/file2.zip",
+          source: location.href,
+          passwords: "",
+        });
+        const r = await fetch("http://127.0.0.1:9666/flash/add", { method: "POST", body });
+        out.textContent = "plain: " + (await r.text());
+      };
+      document.getElementById("crypted").onclick = async () => {
+        const keyHex = "31323334353637383930313233343536";
+        const plaintext = "https://example.com/secret1.zip\r\nhttps://example.com/secret2.zip";
+        const enc = new TextEncoder();
+        const keyBytes = new Uint8Array(keyHex.match(/.{2}/g).map((h) => parseInt(h, 16)));
+        const key = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-CBC" }, false, ["encrypt"]);
+        const padded = (() => {
+          const data = enc.encode(plaintext);
+          const padLen = 16 - (data.length % 16);
+          const out = new Uint8Array(data.length + padLen);
+          out.set(data);
+          out.fill(padLen, data.length);
+          return out;
+        })();
+        const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-CBC", iv: keyBytes }, key, padded));
+        const b64 = btoa(String.fromCharCode(...cipher));
+        const body = new URLSearchParams({
+          crypted: b64,
+          jk: "function f(){ return '" + keyHex + "'; }",
+          source: location.href,
+          passwords: "",
+        });
+        const r = await fetch("http://127.0.0.1:9666/flash/addcrypted2", { method: "POST", body });
+        out.textContent = "crypted: " + (await r.text());
+      };
+    </script>
+  </body>
+</html>
