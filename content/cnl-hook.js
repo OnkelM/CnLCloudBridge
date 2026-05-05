@@ -43,6 +43,10 @@
     return new URLSearchParams();
   }
 
+  function postToBridge(payload) {
+    window.postMessage({ __myjd: true, ...payload }, "*");
+  }
+
   function hexToBytes(hex) {
     const out = new Uint8Array(hex.length / 2);
     for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
@@ -80,7 +84,7 @@
     const source = params.get("source") ?? location.href;
     const passwords = params.get("passwords") ?? "";
     if (!urls.length) return;
-    chrome.runtime.sendMessage({ type: "CNL_LINKS", urls, source, passwords });
+    postToBridge({ type: "CNL_LINKS", urls, source, passwords });
   }
 
   async function handleAddcrypted2(params) {
@@ -95,10 +99,10 @@
     try {
       const urls = await decryptAddcrypted2(cryptedB64, jk);
       if (!urls.length) return;
-      chrome.runtime.sendMessage({ type: "CNL_LINKS", urls, source, passwords });
+      postToBridge({ type: "CNL_LINKS", urls, source, passwords });
     } catch (e) {
       console.error("[MyJD-MV3] Decrypt fehlgeschlagen:", e);
-      chrome.runtime.sendMessage({
+      postToBridge({
         type: "CNL_LINKS",
         urls: [],
         source,
