@@ -1,0 +1,17 @@
+export const MSG = Object.freeze({
+  GET_STATE: "GET_STATE",
+  LOGIN: "LOGIN",
+  LOGOUT: "LOGOUT",
+  SET_CNL_ENABLED: "SET_CNL_ENABLED",
+  REFRESH_DEVICES: "REFRESH_DEVICES",
+  CNL_LINKS: "CNL_LINKS",
+  GET_PENDING: "GET_PENDING",
+  PICK_DEVICE: "PICK_DEVICE",
+  CANCEL_PENDING: "CANCEL_PENDING",
+});
+
+export const POPUP_VIEW = Object.freeze({
+  LOGGED_OUT: "loggedOut",
+  IDLE: "idle",
+  PICKER: "picker",
+});
