@@ -2,14 +2,18 @@ import { MSG, POPUP_VIEW } from "../shared/messages.js";
 import {
   MyJdSession,
   connect,
+  connectWithSecret,
   reconnect,
   disconnect,
   listDevices,
   addLinks,
   MyJdApiError,
 } from "./myjd-api.js";
+import { bytesToHex, hexToBytes } from "../shared/crypto.js";
 
 const STORAGE_LOCAL_KEYS = ["email", "loginSecret", "deviceSecret", "cnlEnabled"];
+const STORAGE_SESSION_KEYS = ["sessionToken", "regainToken", "serverEncToken", "deviceEncToken"];
+const NOTIFICATION_ID = "myjd-mv3";
 
 let session = null;
 let cnlEnabled = true;
@@ -26,21 +30,31 @@ async function loadFromStorage() {
       loginSecret: local.loginSecret,
       deviceSecret: local.deviceSecret,
     });
+    const ses = await chrome.storage.session.get(STORAGE_SESSION_KEYS);
+    if (ses.sessionToken) session.sessionToken = ses.sessionToken;
+    if (ses.regainToken) session.regainToken = ses.regainToken;
+    if (ses.serverEncToken) session.serverEncToken = hexToBytes(ses.serverEncToken);
+    if (ses.deviceEncToken) session.deviceEncToken = hexToBytes(ses.deviceEncToken);
   } else {
     session = null;
   }
 }
 
-async function persistSession(email, loginSecretBytes, deviceSecretBytes) {
+async function persistSessionPersistent(s) {
   await chrome.storage.local.set({
-    email,
-    loginSecret: bytesToHex(loginSecretBytes),
-    deviceSecret: bytesToHex(deviceSecretBytes),
+    email: s.email,
+    loginSecret: bytesToHex(s.loginSecret),
+    deviceSecret: bytesToHex(s.deviceSecret),
   });
 }
 
-function bytesToHex(bytes) {
-  return Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, "0")).join("");
+async function persistSessionVolatile(s) {
+  await chrome.storage.session.set({
+    sessionToken: s.sessionToken ?? null,
+    regainToken: s.regainToken ?? null,
+    serverEncToken: s.serverEncToken ? bytesToHex(s.serverEncToken) : null,
+    deviceEncToken: s.deviceEncToken ? bytesToHex(s.deviceEncToken) : null,
+  });
 }
 
 async function clearAllStorage() {
@@ -50,18 +64,42 @@ async function clearAllStorage() {
 
 async function ensureSessionAlive() {
   if (!session) throw new MyJdApiError("Nicht eingeloggt", "NOT_LOGGED_IN");
-  if (session.sessionToken) return;
-  await reconnect(session).catch(async (e) => {
+  if (session.sessionToken && session.serverEncToken) return;
+  try {
+    await reconnect(session);
+    await persistSessionVolatile(session);
+    return;
+  } catch (e) {
     if (e.code === "NO_CREDS") throw e;
-    await connectWithStoredSecretsOrFail();
-  });
+  }
+  await connectWithSecret(session);
+  await persistSessionVolatile(session);
 }
 
-async function connectWithStoredSecretsOrFail() {
-  throw new MyJdApiError(
-    "Session abgelaufen, bitte erneut einloggen",
-    "RECONNECT_FAILED",
-  );
+async function withReconnectRetry(fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e.code === 401 || e.code === 403 || /token/i.test(e.message ?? "")) {
+      try {
+        await reconnect(session);
+      } catch {
+        await connectWithSecret(session);
+      }
+      await persistSessionVolatile(session);
+      return await fn();
+    }
+    throw e;
+  }
+}
+
+function notify(message) {
+  chrome.notifications.create(NOTIFICATION_ID, {
+    type: "basic",
+    iconUrl: chrome.runtime.getURL("icons/icon48.png"),
+    title: "MyJDownloader",
+    message,
+  });
 }
 
 async function getDevices(forceRefresh = false) {
@@ -106,25 +144,26 @@ async function openPickerPopup() {
   });
 }
 
-async function withReconnectRetry(fn) {
-  try {
-    return await fn();
-  } catch (e) {
-    if (e.code === 401 || e.code === 403 || e.code === "TOKEN" || /token/i.test(e.message ?? "")) {
-      await reconnect(session);
-      return await fn();
-    }
-    throw e;
+async function handleCnlLinks({ urls, source, passwords, error }) {
+  gcPending();
+  if (error === "decrypt_failed") {
+    notify("Click'n'Load-Entschlüsselung fehlgeschlagen.");
+    return;
   }
-}
-
-function notify(message) {
-  chrome.notifications.create({
-    type: "basic",
-    iconUrl: chrome.runtime.getURL("icons/icon48.png"),
-    title: "MyJDownloader",
-    message,
-  });
+  if (!urls?.length) return;
+  if (!cnlEnabled) {
+    notify("Click'n'Load über die Extension ist deaktiviert.");
+    return;
+  }
+  if (!session?.sessionToken) {
+    try { await ensureSessionAlive(); } catch {
+      notify("Bitte erst einloggen, dann Click'n'Load erneut versuchen.");
+      return;
+    }
+  }
+  const requestId = makeRequestId();
+  pending.set(requestId, { urls, source: source ?? "", passwords: passwords ?? "", createdAt: Date.now() });
+  await openPickerPopup();
 }
 
 async function handlePickDevice(requestId, deviceId) {
@@ -156,33 +195,6 @@ async function handlePickDevice(requestId, deviceId) {
   notify(`${entry.urls.length} Link${entry.urls.length === 1 ? "" : "s"} an ${dev.name} gesendet`);
 }
 
-async function handleCnlLinks({ urls, source, passwords, error }) {
-  gcPending();
-  if (error === "decrypt_failed") {
-    notify("Click'n'Load-Entschlüsselung fehlgeschlagen.");
-    return;
-  }
-  if (!urls?.length) return;
-  if (!cnlEnabled) {
-    notify("Click'n'Load über die Extension ist deaktiviert.");
-    return;
-  }
-  if (!session?.sessionToken) {
-    try { await ensureSessionAlive(); } catch {
-      notify("Bitte erst einloggen, dann Click'n'Load erneut versuchen.");
-      return;
-    }
-  }
-  const devices = await getDevices().catch(() => []);
-  if (!devices.length) {
-    notify("Keine Geräte verbunden.");
-    return;
-  }
-  const requestId = makeRequestId();
-  pending.set(requestId, { urls, source: source ?? "", passwords: passwords ?? "", createdAt: Date.now() });
-  await openPickerPopup();
-}
-
 async function buildState() {
   gcPending();
   const lastPending = [...pending.values()].pop();
@@ -199,7 +211,7 @@ async function buildState() {
   if (!session) return { view: POPUP_VIEW.LOGGED_OUT, cnlEnabled };
   if (!session.sessionToken) {
     try {
-      await reconnect(session);
+      await ensureSessionAlive();
     } catch (e) {
       if (e.code === "NO_CREDS" || e.code === "AUTH" || e.code === 403) {
         await clearAllStorage();
@@ -217,11 +229,8 @@ async function handleLogin(email, password) {
   const s = new MyJdSession();
   await connect(s, email, password);
   session = s;
-  await persistSession(s.email, s.loginSecret, s.deviceSecret);
-  await chrome.storage.session.set({
-    sessionToken: s.sessionToken,
-    regainToken: s.regainToken,
-  });
+  await persistSessionPersistent(s);
+  await persistSessionVolatile(s);
   cachedDevices = null;
   return buildState();
 }

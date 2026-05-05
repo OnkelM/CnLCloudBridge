@@ -175,3 +175,21 @@ export async function addLinks(session, deviceId, { links, sourceUrl, autostart 
   };
   return deviceCall(session, deviceId, "/linkgrabberv2/addLinks", [param]);
 }
+
+export async function connectWithSecret(session) {
+  if (!session.email || !session.loginSecret || !session.deviceSecret) {
+    throw new MyJdApiError("Keine persistierten Credentials", "NO_CREDS");
+  }
+  const rid = nextRid(session);
+  const path = "/my/connect";
+  const query = `?email=${encodeURIComponent(session.email)}&appkey=${APP_KEY}&rid=${rid}`;
+  const data = await callApi(path, query, session.loginSecret, null);
+  if (!data || !data.sessiontoken) {
+    throw new MyJdApiError("Antwort enthielt kein sessiontoken", "AUTH");
+  }
+  session.sessionToken = data.sessiontoken;
+  session.regainToken = data.regaintoken;
+  session.serverEncToken = await updateToken(session.loginSecret, data.sessiontoken);
+  session.deviceEncToken = await updateToken(session.deviceSecret, data.sessiontoken);
+  return data;
+}
