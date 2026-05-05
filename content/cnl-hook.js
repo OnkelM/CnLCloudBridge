@@ -1,9 +1,9 @@
 (function () {
-  const TARGET_HOST = "127.0.0.1:9666";
+  const TARGET_HOSTS = new Set(["127.0.0.1:9666", "localhost:9666"]);
 
   function isCnlUrl(url) {
     try {
-      return new URL(url, location.href).host === TARGET_HOST;
+      return TARGET_HOSTS.has(new URL(url, location.href).host);
     } catch {
       return false;
     }

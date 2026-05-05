@@ -107,6 +107,7 @@ async function getDevices(forceRefresh = false) {
   const fresh = !cachedDevices || Date.now() - cachedDevicesAt > DEVICE_CACHE_MS;
   if (forceRefresh || fresh) {
     cachedDevices = await withReconnectRetry(() => listDevices(session));
+    console.debug("[MyJD-MV3] devices:", cachedDevices);
     cachedDevicesAt = Date.now();
     await chrome.storage.session.set({ cachedDevices, cachedDevicesAt });
   }

@@ -73,7 +73,7 @@ function renderIdle(state) {
     const li = document.createElement("li");
     li.className = "device";
     const dot = document.createElement("span");
-    dot.className = "dot " + (d.status === "ONLINE" || d.status === undefined ? "online" : "offline");
+    dot.className = "dot " + (isDeviceOnline(d) ? "online" : "offline");
     li.appendChild(dot);
     const nm = document.createElement("span");
     nm.className = "name";
@@ -85,6 +85,15 @@ function renderIdle(state) {
     li.appendChild(ty);
     list.appendChild(li);
   }
+}
+
+function isDeviceOnline(d) {
+  if (typeof d.status === "string") {
+    return !/offline/i.test(d.status);
+  }
+  if (typeof d.online === "boolean") return d.online;
+  if (typeof d.connected === "boolean") return d.connected;
+  return true;
 }
 
 function renderPicker(state) {
@@ -117,7 +126,7 @@ function renderPicker(state) {
   empty.hidden = true;
   for (const d of state.devices) {
     const li = document.createElement("li");
-    const isOnline = d.status === "ONLINE" || d.status === undefined;
+    const isOnline = isDeviceOnline(d);
     li.className = "device " + (isOnline ? "online" : "offline");
     li.dataset.deviceId = d.id;
     const dot = document.createElement("span");
