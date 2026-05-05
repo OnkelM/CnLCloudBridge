@@ -1,13 +1,21 @@
-import { MSG, POPUP_VIEW } from "../shared/messages.js";
+import { MSG, POPUP_VIEW, POPUP_PORT_NAME } from "../shared/messages.js";
+import { formatBytes, formatSpeed } from "../shared/format.js";
+
+const VIEW_SETTINGS = "settings";
 
 const views = {
   [POPUP_VIEW.LOGGED_OUT]: document.getElementById("view-loggedOut"),
   [POPUP_VIEW.IDLE]: document.getElementById("view-idle"),
   [POPUP_VIEW.PICKER]: document.getElementById("view-picker"),
+  [VIEW_SETTINGS]: document.getElementById("view-settings"),
 };
 const loadingView = document.getElementById("view-loading");
 
 let currentPendingId = null;
+let currentEmail = "";
+let currentCnlEnabled = true;
+let lastIdleState = null;
+let inSettings = false;
 
 function showView(name) {
   loadingView.hidden = true;
@@ -34,6 +42,7 @@ function render(state) {
   if (!state) return;
   currentPendingId = state?.pending?.id ?? null;
   if (state.view === POPUP_VIEW.LOGGED_OUT) {
+    inSettings = false;
     showView(POPUP_VIEW.LOGGED_OUT);
     const errEl = document.getElementById("login-error");
     if (state.error) {
@@ -43,16 +52,33 @@ function render(state) {
       errEl.hidden = true;
     }
   } else if (state.view === POPUP_VIEW.IDLE) {
-    renderIdle(state);
+    lastIdleState = state;
+    currentEmail = state.email ?? "";
+    currentCnlEnabled = state.cnlEnabled !== false;
+    if (inSettings) {
+      renderSettings();
+    } else {
+      renderIdle(state);
+    }
   } else if (state.view === POPUP_VIEW.PICKER) {
+    inSettings = false;
     renderPicker(state);
   }
 }
 
+function isDeviceOnline(d) {
+  if (typeof d.status === "string") return !/offline/i.test(d.status);
+  if (typeof d.online === "boolean") return d.online;
+  if (typeof d.connected === "boolean") return d.connected;
+  return true;
+}
+
+function deviceLink(deviceId) {
+  return `https://my.jdownloader.org/?deviceId=${encodeURIComponent(deviceId)}#webinterface:downloads`;
+}
+
 function renderIdle(state) {
   showView(POPUP_VIEW.IDLE);
-  document.getElementById("idle-email").textContent = state.email ?? "";
-  document.getElementById("cnl-toggle").checked = state.cnlEnabled !== false;
   const list = document.getElementById("devices-list");
   const empty = document.getElementById("devices-empty");
   const errEl = document.getElementById("devices-error");
@@ -70,30 +96,55 @@ function renderIdle(state) {
   }
   empty.hidden = true;
   for (const d of state.devices) {
-    const li = document.createElement("li");
-    li.className = "device";
-    const dot = document.createElement("span");
-    dot.className = "dot " + (isDeviceOnline(d) ? "online" : "offline");
-    li.appendChild(dot);
-    const nm = document.createElement("span");
-    nm.className = "name";
-    nm.textContent = d.name ?? d.id;
-    li.appendChild(nm);
-    const ty = document.createElement("span");
-    ty.className = "type";
-    ty.textContent = d.type ?? "";
-    li.appendChild(ty);
-    list.appendChild(li);
+    list.appendChild(buildDeviceCard(d));
   }
 }
 
-function isDeviceOnline(d) {
-  if (typeof d.status === "string") {
-    return !/offline/i.test(d.status);
-  }
-  if (typeof d.online === "boolean") return d.online;
-  if (typeof d.connected === "boolean") return d.connected;
-  return true;
+function buildDeviceCard(d) {
+  const li = document.createElement("li");
+  li.className = "device-card";
+  li.dataset.deviceId = d.id;
+  if (!isDeviceOnline(d)) li.dataset.offline = "true";
+
+  const head = document.createElement("header");
+  head.className = "device-card-head";
+  const a = document.createElement("a");
+  a.className = "device-name";
+  a.href = deviceLink(d.id);
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.textContent = d.name ?? d.id;
+  const arrow = document.createElement("span");
+  arrow.className = "ext-arrow";
+  arrow.textContent = "↗";
+  a.appendChild(document.createTextNode(" "));
+  a.appendChild(arrow);
+  head.appendChild(a);
+  const btn = document.createElement("button");
+  btn.className = "play-pause";
+  btn.dataset.state = "idle";
+  btn.textContent = "▶";
+  head.appendChild(btn);
+  li.appendChild(head);
+
+  const stats = document.createElement("div");
+  stats.className = "device-card-stats muted-all";
+  stats.innerHTML = `
+    <span class="stat speed"><span class="ico">⏱</span><span class="val">—</span></span>
+    <span class="stat state"><span class="dot idle"></span><span class="val">—</span></span>
+    <span class="stat finished"><span class="ico">✓</span><span class="val">—</span></span>
+    <span class="stat bytes"><span class="ico">📥</span><span class="val">—</span></span>
+  `;
+  li.appendChild(stats);
+
+  return li;
+}
+
+function renderSettings() {
+  inSettings = true;
+  showView(VIEW_SETTINGS);
+  document.getElementById("settings-email").textContent = currentEmail;
+  document.getElementById("cnl-toggle-settings").checked = currentCnlEnabled;
 }
 
 function renderPicker(state) {
@@ -157,12 +208,25 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
   render(res);
 });
 
-document.getElementById("logout-btn").addEventListener("click", async () => {
+document.getElementById("settings-open").addEventListener("click", () => {
+  inSettings = true;
+  renderSettings();
+});
+
+document.getElementById("settings-back").addEventListener("click", () => {
+  inSettings = false;
+  if (lastIdleState) renderIdle(lastIdleState);
+  else refreshState();
+});
+
+document.getElementById("settings-logout").addEventListener("click", async () => {
+  inSettings = false;
   const res = await send({ type: MSG.LOGOUT });
   render(res);
 });
 
-document.getElementById("cnl-toggle").addEventListener("change", async (e) => {
+document.getElementById("cnl-toggle-settings").addEventListener("change", async (e) => {
+  currentCnlEnabled = e.target.checked;
   await send({ type: MSG.SET_CNL_ENABLED, enabled: e.target.checked });
 });
 
