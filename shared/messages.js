@@ -8,6 +8,9 @@ export const MSG = Object.freeze({
   GET_PENDING: "GET_PENDING",
   PICK_DEVICE: "PICK_DEVICE",
   CANCEL_PENDING: "CANCEL_PENDING",
+  START_DOWNLOADS: "START_DOWNLOADS",
+  PAUSE_DOWNLOADS: "PAUSE_DOWNLOADS",
+  DEVICE_STATS: "DEVICE_STATS",
 });
 
 export const POPUP_VIEW = Object.freeze({
@@ -15,3 +18,5 @@ export const POPUP_VIEW = Object.freeze({
   IDLE: "idle",
   PICKER: "picker",
 });
+
+export const POPUP_PORT_NAME = "popup";
