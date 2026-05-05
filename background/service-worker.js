@@ -74,7 +74,69 @@ async function getDevices(forceRefresh = false) {
   return cachedDevices;
 }
 
+const PENDING_TTL_MS = 5 * 60 * 1000;
+const pending = new Map();
+
+function makeRequestId() {
+  return `cnl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function gcPending() {
+  const now = Date.now();
+  for (const [id, entry] of pending) {
+    if (now - entry.createdAt > PENDING_TTL_MS) pending.delete(id);
+  }
+}
+
+async function openPickerPopup() {
+  try {
+    if (chrome.action.openPopup) {
+      await chrome.action.openPopup();
+      return;
+    }
+  } catch (e) {
+    console.warn("openPopup nicht möglich, Fallback auf window.create:", e);
+  }
+  await chrome.windows.create({
+    url: chrome.runtime.getURL("popup/popup.html?picker=1"),
+    type: "popup",
+    width: 360,
+    height: 480,
+  });
+}
+
+async function handleCnlLinks({ urls, source, passwords, error }) {
+  gcPending();
+  if (error === "decrypt_failed") {
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: chrome.runtime.getURL("icons/icon48.png"),
+      title: "MyJDownloader",
+      message: "Click'n'Load-Entschlüsselung fehlgeschlagen.",
+    });
+    return;
+  }
+  if (!urls?.length) return;
+  if (!cnlEnabled) return;
+
+  const requestId = makeRequestId();
+  pending.set(requestId, { urls, source: source ?? "", passwords: passwords ?? "", createdAt: Date.now() });
+  await openPickerPopup();
+}
+
 async function buildState() {
+  gcPending();
+  const lastPending = [...pending.values()].pop();
+  if (lastPending && session?.sessionToken) {
+    const devices = await getDevices().catch(() => []);
+    return {
+      view: POPUP_VIEW.PICKER,
+      email: session.email,
+      cnlEnabled,
+      devices,
+      pending: { id: [...pending.keys()].pop(), urls: lastPending.urls, source: lastPending.source },
+    };
+  }
   if (!session) return { view: POPUP_VIEW.LOGGED_OUT, cnlEnabled };
   if (!session.sessionToken) {
     try {
@@ -142,6 +204,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ devices });
           break;
         }
+        case MSG.CNL_LINKS:
+          await handleCnlLinks(msg);
+          sendResponse({ ok: true });
+          break;
+        case MSG.GET_PENDING: {
+          gcPending();
+          const entries = [...pending.entries()].map(([id, v]) => ({ id, ...v }));
+          const last = entries[entries.length - 1] ?? null;
+          sendResponse({ pending: last });
+          break;
+        }
+        case MSG.CANCEL_PENDING:
+          pending.delete(msg.requestId);
+          sendResponse({ ok: true });
+          break;
         default:
           sendResponse({ error: "unknown_message_type" });
       }
