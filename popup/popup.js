@@ -40,22 +40,58 @@ function render(state) {
       errEl.hidden = true;
     }
   } else if (state.view === POPUP_VIEW.IDLE) {
-    showView(POPUP_VIEW.IDLE);
+    renderIdle(state);
   } else if (state.view === POPUP_VIEW.PICKER) {
     showView(POPUP_VIEW.PICKER);
+  }
+}
+
+function renderIdle(state) {
+  showView(POPUP_VIEW.IDLE);
+  document.getElementById("idle-email").textContent = state.email ?? "";
+  document.getElementById("cnl-toggle").checked = state.cnlEnabled !== false;
+  const list = document.getElementById("devices-list");
+  const empty = document.getElementById("devices-empty");
+  const errEl = document.getElementById("devices-error");
+  list.innerHTML = "";
+  if (state.offline) {
+    errEl.textContent = "Offline — keine Verbindung zur API.";
+    errEl.hidden = false;
+    empty.hidden = true;
+    return;
+  }
+  errEl.hidden = true;
+  if (!state.devices?.length) {
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+  for (const d of state.devices) {
+    const li = document.createElement("li");
+    li.className = "device";
+    const dot = document.createElement("span");
+    dot.className = "dot " + (d.status === "ONLINE" || d.status === undefined ? "online" : "offline");
+    li.appendChild(dot);
+    const nm = document.createElement("span");
+    nm.className = "name";
+    nm.textContent = d.name ?? d.id;
+    li.appendChild(nm);
+    const ty = document.createElement("span");
+    ty.className = "type";
+    ty.textContent = d.type ?? "";
+    li.appendChild(ty);
+    list.appendChild(li);
   }
 }
 
 document.getElementById("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  const email = fd.get("email");
-  const password = fd.get("password");
   const btn = document.getElementById("login-btn");
   btn.disabled = true;
   const errEl = document.getElementById("login-error");
   errEl.hidden = true;
-  const res = await send({ type: MSG.LOGIN, email, password });
+  const res = await send({ type: MSG.LOGIN, email: fd.get("email"), password: fd.get("password") });
   btn.disabled = false;
   if (res?.error) {
     errEl.textContent = `Login fehlgeschlagen: ${res.error}`;
@@ -63,6 +99,29 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
     return;
   }
   render(res);
+});
+
+document.getElementById("logout-btn").addEventListener("click", async () => {
+  const res = await send({ type: MSG.LOGOUT });
+  render(res);
+});
+
+document.getElementById("cnl-toggle").addEventListener("change", async (e) => {
+  await send({ type: MSG.SET_CNL_ENABLED, enabled: e.target.checked });
+});
+
+document.getElementById("refresh-devices-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("refresh-devices-btn");
+  btn.disabled = true;
+  const res = await send({ type: MSG.REFRESH_DEVICES });
+  btn.disabled = false;
+  if (res?.error) {
+    const errEl = document.getElementById("devices-error");
+    errEl.textContent = res.error;
+    errEl.hidden = false;
+    return;
+  }
+  await refreshState();
 });
 
 refreshState();

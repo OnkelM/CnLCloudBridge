@@ -20,7 +20,28 @@
         </form>
       </section>
 
-      <section id="view-idle" hidden></section>
+      <section id="view-idle" hidden>
+        <header class="bar">
+          <span class="email" id="idle-email"></span>
+          <button class="icon-btn" id="logout-btn" title="Logout">⎋</button>
+        </header>
+        <div class="row">
+          <label class="toggle">
+            <input type="checkbox" id="cnl-toggle" />
+            <span>Click'n'Load via MyJDownloader</span>
+          </label>
+          <p class="hint">Fängt lokale Click'n'Load-Aufrufe ab und sendet sie über MyJDownloader an verbundene JDownloader.</p>
+        </div>
+        <div class="row">
+          <div class="row-head">
+            <span>Geräte</span>
+            <button class="link-btn" id="refresh-devices-btn">Aktualisieren</button>
+          </div>
+          <ul class="devices" id="devices-list"></ul>
+          <p class="empty" id="devices-empty" hidden>Keine Geräte verbunden.</p>
+          <p class="error" id="devices-error" hidden></p>
+        </div>
+      </section>
       <section id="view-picker" hidden></section>
       <section id="view-loading">Lade…</section>
     </div>
