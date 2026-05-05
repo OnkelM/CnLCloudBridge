@@ -5,7 +5,25 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <div id="root">MyJDownloader Extension läuft.</div>
+    <div id="root">
+      <section id="view-loggedOut" hidden>
+        <header class="brand">MyJDownloader</header>
+        <form id="login-form" autocomplete="on">
+          <label>Email
+            <input type="email" name="email" required autocomplete="username" />
+          </label>
+          <label>Passwort
+            <input type="password" name="password" required autocomplete="current-password" />
+          </label>
+          <button type="submit" id="login-btn">Login</button>
+          <p class="error" id="login-error" hidden></p>
+        </form>
+      </section>
+
+      <section id="view-idle" hidden></section>
+      <section id="view-picker" hidden></section>
+      <section id="view-loading">Lade…</section>
+    </div>
     <script type="module" src="popup.js"></script>
   </body>
 </html>
