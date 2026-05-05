@@ -152,14 +152,25 @@
         if (isJdcheck || isFlash) {
           if (isFlash) dispatch(ep, body).catch((e) => console.error("[MyJD-MV3]", e));
           const responseBody = isJdcheck ? "jdownloader=true; var jcheck = true;" : "success";
+          try {
+            Object.defineProperty(xhr, "readyState", { get: () => 4, configurable: true });
+            Object.defineProperty(xhr, "status", { get: () => 200, configurable: true });
+            Object.defineProperty(xhr, "statusText", { get: () => "OK", configurable: true });
+            Object.defineProperty(xhr, "responseText", { get: () => responseBody, configurable: true });
+            Object.defineProperty(xhr, "response", { get: () => responseBody, configurable: true });
+            Object.defineProperty(xhr, "responseURL", { get: () => hookUrl, configurable: true });
+          } catch (defErr) {
+            console.warn("[MyJD-MV3] XHR property faking failed, letting real request go:", defErr);
+            return origSend.call(xhr, body);
+          }
           setTimeout(() => {
-            Object.defineProperty(xhr, "readyState", { value: 4, configurable: true });
-            Object.defineProperty(xhr, "status", { value: 200, configurable: true });
-            Object.defineProperty(xhr, "responseText", { value: responseBody, configurable: true });
-            Object.defineProperty(xhr, "response", { value: responseBody, configurable: true });
-            xhr.dispatchEvent(new Event("readystatechange"));
-            xhr.dispatchEvent(new Event("load"));
-            xhr.dispatchEvent(new Event("loadend"));
+            try {
+              xhr.dispatchEvent(new Event("readystatechange"));
+              xhr.dispatchEvent(new Event("load"));
+              xhr.dispatchEvent(new Event("loadend"));
+            } catch (evErr) {
+              console.warn("[MyJD-MV3] XHR event dispatch failed:", evErr);
+            }
           }, 0);
           return;
         }
