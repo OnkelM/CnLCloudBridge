@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+  <body>
+    <h1>jdcheck-Test</h1>
+    <button id="b">jdcheck via fetch</button>
+    <pre id="out"></pre>
+    <script>
+      document.getElementById("b").onclick = async () => {
+        try {
+          const r = await fetch("http://127.0.0.1:9666/jdcheck.js");
+          document.getElementById("out").textContent = await r.text();
+        } catch (e) {
+          document.getElementById("out").textContent = "ERR: " + e;
+        }
+      };
+    </script>
+  </body>
+</html>
