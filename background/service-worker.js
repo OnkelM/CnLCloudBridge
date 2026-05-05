@@ -1,4 +1,4 @@
-import { MSG, POPUP_VIEW } from "../shared/messages.js";
+import { MSG, POPUP_VIEW, POPUP_PORT_NAME } from "../shared/messages.js";
 import {
   MyJdSession,
   connect,
@@ -7,6 +7,9 @@ import {
   disconnect,
   listDevices,
   addLinks,
+  pollDevice,
+  startDownloads,
+  pauseDownloads,
   MyJdApiError,
 } from "./myjd-api.js";
 import { bytesToHex, hexToBytes } from "../shared/crypto.js";
@@ -20,6 +23,13 @@ let cnlEnabled = true;
 let cachedDevices = null;
 let cachedDevicesAt = 0;
 const DEVICE_CACHE_MS = 60_000;
+const POLL_INTERVAL_MS = 4000;
+const DEVICE_FAIL_THRESHOLD = 3;
+const NOTIFY_FAIL_INTERVAL_MS = 60_000;
+let popupPort = null;
+let pollerTimer = null;
+const deviceFailCounts = new Map();
+let lastFailNotifyAt = 0;
 
 async function loadFromStorage() {
   const local = await chrome.storage.local.get(STORAGE_LOCAL_KEYS);
@@ -250,6 +260,68 @@ async function handleSetCnlEnabled(enabled) {
   await chrome.storage.local.set({ cnlEnabled });
   return { ok: true };
 }
+
+async function tickPoll() {
+  if (!popupPort) return;
+  if (!session?.sessionToken) {
+    try { await ensureSessionAlive(); } catch { return; }
+  }
+  let devices;
+  try {
+    devices = await getDevices();
+  } catch {
+    return;
+  }
+  await Promise.allSettled(
+    devices.map((d) =>
+      withReconnectRetry(() => pollDevice(session, d.id))
+        .then((stats) => {
+          deviceFailCounts.delete(d.id);
+          popupPort?.postMessage({ type: MSG.DEVICE_STATS, deviceId: d.id, stats });
+        })
+        .catch((err) => {
+          const n = (deviceFailCounts.get(d.id) ?? 0) + 1;
+          deviceFailCounts.set(d.id, n);
+          popupPort?.postMessage({
+            type: MSG.DEVICE_STATS,
+            deviceId: d.id,
+            error: err.message ?? String(err),
+            failCount: n,
+          });
+          if (n >= DEVICE_FAIL_THRESHOLD && Date.now() - lastFailNotifyAt > NOTIFY_FAIL_INTERVAL_MS) {
+            lastFailNotifyAt = Date.now();
+            notify(`Status für ${d.name ?? d.id} nicht abrufbar`);
+          }
+        }),
+    ),
+  );
+}
+
+function startPolling() {
+  if (pollerTimer) return;
+  tickPoll();
+  pollerTimer = setInterval(tickPoll, POLL_INTERVAL_MS);
+}
+
+function stopPolling() {
+  if (pollerTimer) {
+    clearInterval(pollerTimer);
+    pollerTimer = null;
+  }
+  deviceFailCounts.clear();
+}
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== POPUP_PORT_NAME) return;
+  popupPort = port;
+  startPolling();
+  port.onDisconnect.addListener(() => {
+    if (popupPort === port) {
+      popupPort = null;
+      stopPolling();
+    }
+  });
+});
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
