@@ -69,10 +69,17 @@ async function callApi(path, query, secret, body) {
   const res = await fetch(url, init);
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`;
+    let raw = "";
     try {
-      const txt = await res.text();
-      detail += ` — ${txt}`;
+      raw = await res.text();
     } catch {}
+    if (raw) {
+      let decrypted = null;
+      try {
+        decrypted = await aesCbcDecrypt(secret, raw);
+      } catch {}
+      detail += decrypted ? ` — ${decrypted}` : ` — ${raw}`;
+    }
     throw new MyJdApiError(detail, res.status);
   }
   const cipherB64 = await res.text();
