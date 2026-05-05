@@ -68,7 +68,7 @@ async function getDevices(forceRefresh = false) {
   if (!session?.sessionToken) await ensureSessionAlive();
   const fresh = !cachedDevices || Date.now() - cachedDevicesAt > DEVICE_CACHE_MS;
   if (forceRefresh || fresh) {
-    cachedDevices = await listDevices(session);
+    cachedDevices = await withReconnectRetry(() => listDevices(session));
     cachedDevicesAt = Date.now();
     await chrome.storage.session.set({ cachedDevices, cachedDevicesAt });
   }
@@ -106,6 +106,18 @@ async function openPickerPopup() {
   });
 }
 
+async function withReconnectRetry(fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e.code === 401 || e.code === 403 || e.code === "TOKEN" || /token/i.test(e.message ?? "")) {
+      await reconnect(session);
+      return await fn();
+    }
+    throw e;
+  }
+}
+
 function notify(message) {
   chrome.notifications.create({
     type: "basic",
@@ -121,32 +133,24 @@ async function handlePickDevice(requestId, deviceId) {
   await ensureSessionAlive();
   const devices = await getDevices().catch(() => cachedDevices ?? []);
   const dev = devices.find((d) => d.id === deviceId) ?? { id: deviceId, name: deviceId };
-
   try {
-    await addLinks(session, deviceId, {
-      links: entry.urls,
-      sourceUrl: entry.source,
-      passwords: entry.passwords,
-      autostart: false,
-    });
+    await withReconnectRetry(() =>
+      addLinks(session, deviceId, {
+        links: entry.urls,
+        sourceUrl: entry.source,
+        passwords: entry.passwords,
+        autostart: false,
+      }),
+    );
   } catch (e) {
-    if (e.code === 401 || e.code === 403) {
-      try {
-        await reconnect(session);
-        await addLinks(session, deviceId, {
-          links: entry.urls,
-          sourceUrl: entry.source,
-          passwords: entry.passwords,
-          autostart: false,
-        });
-      } catch (e2) {
-        notify(`Senden fehlgeschlagen: ${e2.message ?? e2}`);
-        throw e2;
-      }
-    } else {
-      notify(`Senden fehlgeschlagen: ${e.message ?? e}`);
+    if (e.code === "AUTH" || e.code === "RECONNECT_FAILED" || e.code === "NO_CREDS") {
+      await clearAllStorage();
+      session = null;
+      notify("Bitte erneut einloggen — Session abgelaufen.");
       throw e;
     }
+    notify(`Senden fehlgeschlagen: ${e.message ?? e}`);
+    throw e;
   }
   pending.delete(requestId);
   notify(`${entry.urls.length} Link${entry.urls.length === 1 ? "" : "s"} an ${dev.name} gesendet`);
