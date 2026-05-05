@@ -88,8 +88,12 @@ Service Worker: Browser-Notification "3 Links an NAS-JD gesendet"
 
 **Schlüsselableitung** (im Service Worker, Web Crypto API):
 
-- `loginSecret = PBKDF2-SHA256(password, salt = email + "server", iter = 256, length = 256 bit)`
-- `deviceSecret = PBKDF2-SHA256(password, salt = email + "device", iter = 256, length = 256 bit)`
+- `loginSecret = SHA-256(email + password + "server")`
+- `deviceSecret = SHA-256(email + password + "device")`
+
+(Email wird dabei lower-cased; Domain ebenfalls lower-cased. Die ursprünglich
+hier vermutete PBKDF2-Variante ist falsch — die Referenz-Implementation
+`myjdapi` verwendet einfaches SHA-256.)
 
 **Session-Aufbau:**
 
