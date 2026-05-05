@@ -244,6 +244,28 @@ document.getElementById("refresh-devices-btn").addEventListener("click", async (
   await refreshState();
 });
 
+document.getElementById("devices-list").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button.play-pause");
+  if (!btn) return;
+  const card = btn.closest("li.device-card");
+  if (!card) return;
+  const deviceId = card.dataset.deviceId;
+  const wasRunning = btn.dataset.state === "running";
+  btn.disabled = true;
+  const prevText = btn.textContent;
+  btn.textContent = wasRunning ? "▶" : "⏸";
+  const msgType = wasRunning ? MSG.PAUSE_DOWNLOADS : MSG.START_DOWNLOADS;
+  const payload = wasRunning
+    ? { type: msgType, deviceId, paused: true }
+    : { type: msgType, deviceId };
+  const res = await send(payload);
+  btn.disabled = false;
+  if (res?.error) {
+    btn.textContent = prevText;
+    console.error("play/pause failed:", res.error);
+  }
+});
+
 document.getElementById("picker-devices").addEventListener("click", async (e) => {
   const li = e.target.closest("li.device");
   if (!li) return;
