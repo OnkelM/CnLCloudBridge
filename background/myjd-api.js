@@ -54,11 +54,14 @@ function nextRid(session) {
   return session.requestId;
 }
 
-async function callApi(path, query, secret, body) {
-  const sep = query.includes("?") ? "&" : "?";
-  const sigBase = `${path}${query}`;
-  const sig = await hmacSha256(secret, sigBase);
-  const url = `${API_ROOT}${path}${query}${sep}signature=${sig}`;
+async function callApi(path, query, secret, body, { sign = true } = {}) {
+  let url = `${API_ROOT}${path}${query}`;
+  if (sign) {
+    const sigBase = `${path}${query}`;
+    const sig = await hmacSha256(secret, sigBase);
+    const sep = query.includes("?") ? "&" : "?";
+    url = `${API_ROOT}${path}${query}${sep}signature=${sig}`;
+  }
   const init = body
     ? {
         method: "POST",
@@ -165,7 +168,7 @@ export async function deviceCall(session, deviceId, action, params = []) {
     params: params.map((p) => (typeof p === "string" ? p : JSON.stringify(p))),
     rid,
   });
-  return callApi(path, query, session.deviceEncToken, body);
+  return callApi(path, query, session.deviceEncToken, body, { sign: false });
 }
 
 export async function addLinks(session, deviceId, { links, sourceUrl, autostart = false, packageName = null, passwords = "" }) {
