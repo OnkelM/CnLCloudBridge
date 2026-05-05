@@ -22,26 +22,43 @@
 
       <section id="view-idle" hidden>
         <header class="bar">
-          <span class="email" id="idle-email"></span>
-          <button class="icon-btn" id="logout-btn" title="Logout">⎋</button>
+          <span class="brand-line">MyJDownloader</span>
+          <button class="icon-btn" id="settings-open" title="Einstellungen">⚙</button>
         </header>
-        <div class="row">
-          <label class="toggle">
-            <input type="checkbox" id="cnl-toggle" />
-            <span>Click'n'Load via MyJDownloader</span>
-          </label>
-          <p class="hint">Fängt lokale Click'n'Load-Aufrufe ab und sendet sie über MyJDownloader an verbundene JDownloader.</p>
-        </div>
         <div class="row">
           <div class="row-head">
             <span>Geräte</span>
             <button class="link-btn" id="refresh-devices-btn">Aktualisieren</button>
           </div>
-          <ul class="devices" id="devices-list"></ul>
+          <ul class="device-cards" id="devices-list"></ul>
           <p class="empty" id="devices-empty" hidden>Keine Geräte verbunden.</p>
           <p class="error" id="devices-error" hidden></p>
         </div>
       </section>
+
+      <section id="view-settings" hidden>
+        <header class="bar">
+          <span class="brand-line">MyJDownloader</span>
+          <button class="icon-btn" id="settings-back" title="Zurück">←</button>
+        </header>
+        <div class="row">
+          <div class="account">
+            <span class="ico">👤</span>
+            <span id="settings-email"></span>
+          </div>
+        </div>
+        <div class="row">
+          <label class="toggle">
+            <input type="checkbox" id="cnl-toggle-settings" />
+            <span>Click'n'Load via MyJDownloader</span>
+          </label>
+          <p class="hint">Fängt lokale Click'n'Load-Aufrufe ab und sendet sie über MyJDownloader an verbundene JDownloader.</p>
+        </div>
+        <div class="row">
+          <button class="logout-btn" id="settings-logout">Logout</button>
+        </div>
+      </section>
+
       <section id="view-picker" hidden>
         <header class="bar">
           <span class="email" id="picker-email"></span>
@@ -58,6 +75,7 @@
         </div>
         <p class="error" id="picker-error" hidden></p>
       </section>
+
       <section id="view-loading">Lade…</section>
     </div>
     <script type="module" src="popup.js"></script>
