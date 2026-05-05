@@ -160,3 +160,18 @@ export async function deviceCall(session, deviceId, action, params = []) {
   });
   return callApi(path, query, session.deviceEncToken, body);
 }
+
+export async function addLinks(session, deviceId, { links, sourceUrl, autostart = false, packageName = null, passwords = "" }) {
+  const linksStr = Array.isArray(links) ? links.join("\n") : String(links ?? "");
+  const param = {
+    autostart,
+    links: linksStr,
+    sourceUrl: sourceUrl ?? "",
+    packageName,
+    autoExtract: false,
+    overwritePackagizerRules: false,
+    deepDecrypt: false,
+    extractPassword: passwords || null,
+  };
+  return deviceCall(session, deviceId, "/linkgrabberv2/addLinks", [param]);
+}

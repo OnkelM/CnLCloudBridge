@@ -5,6 +5,7 @@ import {
   reconnect,
   disconnect,
   listDevices,
+  addLinks,
   MyJdApiError,
 } from "./myjd-api.js";
 
@@ -103,6 +104,52 @@ async function openPickerPopup() {
     width: 360,
     height: 480,
   });
+}
+
+function notify(message) {
+  chrome.notifications.create({
+    type: "basic",
+    iconUrl: chrome.runtime.getURL("icons/icon48.png"),
+    title: "MyJDownloader",
+    message,
+  });
+}
+
+async function handlePickDevice(requestId, deviceId) {
+  const entry = pending.get(requestId);
+  if (!entry) throw new MyJdApiError("Anfrage nicht mehr verfügbar (Timeout?)", "PENDING_GONE");
+  await ensureSessionAlive();
+  const devices = await getDevices().catch(() => cachedDevices ?? []);
+  const dev = devices.find((d) => d.id === deviceId) ?? { id: deviceId, name: deviceId };
+
+  try {
+    await addLinks(session, deviceId, {
+      links: entry.urls,
+      sourceUrl: entry.source,
+      passwords: entry.passwords,
+      autostart: false,
+    });
+  } catch (e) {
+    if (e.code === 401 || e.code === 403) {
+      try {
+        await reconnect(session);
+        await addLinks(session, deviceId, {
+          links: entry.urls,
+          sourceUrl: entry.source,
+          passwords: entry.passwords,
+          autostart: false,
+        });
+      } catch (e2) {
+        notify(`Senden fehlgeschlagen: ${e2.message ?? e2}`);
+        throw e2;
+      }
+    } else {
+      notify(`Senden fehlgeschlagen: ${e.message ?? e}`);
+      throw e;
+    }
+  }
+  pending.delete(requestId);
+  notify(`${entry.urls.length} Link${entry.urls.length === 1 ? "" : "s"} an ${dev.name} gesendet`);
 }
 
 async function handleCnlLinks({ urls, source, passwords, error }) {
@@ -215,6 +262,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ pending: last });
           break;
         }
+        case MSG.PICK_DEVICE:
+          await handlePickDevice(msg.requestId, msg.deviceId);
+          sendResponse({ ok: true });
+          break;
         case MSG.CANCEL_PENDING:
           pending.delete(msg.requestId);
           sendResponse({ ok: true });
