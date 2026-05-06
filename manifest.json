@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "MyJDownloader (MV3)",
-  "version": "0.1.0",
-  "description": "Fängt Click'n'Load-Aufrufe ab und leitet sie über MyJDownloader an eine entfernte JDownloader-Instanz weiter.",
+  "name": "CnL Cloud Bridge",
+  "version": "1.0.0",
+  "description": "Send Click'n'Load links via the cloud to your remote JDownloader instance. Compatible with the MyJDownloader cloud API.",
   "minimum_chrome_version": "127",
   "permissions": ["storage", "notifications"],
   "host_permissions": ["https://api.jdownloader.org/*"],
