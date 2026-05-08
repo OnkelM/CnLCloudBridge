@@ -14,6 +14,11 @@ A Manifest V3 Chrome extension that intercepts Click'n'Load requests on web page
 - Device name links directly into the corresponding MyJDownloader web UI.
 - Settings sub-page: account info, CnL toggle, logout.
 
+## Limitations
+
+- **No CAPTCHA forwarding.** This extension only relays Click'n'Load link payloads. It does **not** intercept, solve, or forward CAPTCHAs (image, ReCAPTCHA, hCaptcha, etc.) to the remote JDownloader. Any CAPTCHAs required by the hoster must be solved on the remote JDownloader side (e.g. via the MyJDownloader web/mobile UI).
+- `/flash/addcrypted` (legacy DLC containers) is not supported.
+
 ## Install (Developer Mode)
 
 1. Clone this repository.
