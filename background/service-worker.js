@@ -156,12 +156,16 @@ async function openPickerPopup() {
 }
 
 async function handleCnlLinks({ urls, source, passwords, error }) {
+  console.debug("[MyJD-MV3] SW handleCnlLinks: urls=" + (urls?.length ?? 0) + ", error=" + (error ?? "none") + ", cnlEnabled=" + cnlEnabled + ", hasSession=" + !!session?.sessionToken);
   gcPending();
   if (error === "decrypt_failed") {
     notify("Click'n'Load-Entschlüsselung fehlgeschlagen.");
     return;
   }
-  if (!urls?.length) return;
+  if (!urls?.length) {
+    console.debug("[MyJD-MV3] SW handleCnlLinks: ignored (no urls)");
+    return;
+  }
   if (!cnlEnabled) {
     notify("Click'n'Load über die Extension ist deaktiviert.");
     return;
@@ -174,7 +178,14 @@ async function handleCnlLinks({ urls, source, passwords, error }) {
   }
   const requestId = makeRequestId();
   pending.set(requestId, { urls, source: source ?? "", passwords: passwords ?? "", createdAt: Date.now() });
-  await openPickerPopup();
+  console.debug("[MyJD-MV3] SW handleCnlLinks: pending stored, opening picker for requestId=" + requestId);
+  try {
+    await openPickerPopup();
+    console.debug("[MyJD-MV3] SW openPickerPopup ok");
+  } catch (e) {
+    console.error("[MyJD-MV3] SW openPickerPopup threw:", e);
+    notify("Picker konnte nicht geöffnet werden — siehe Service-Worker-Konsole.");
+  }
 }
 
 async function handlePickDevice(requestId, deviceId) {
