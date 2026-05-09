@@ -30,7 +30,20 @@
 
   function parseFormBody(body) {
     if (!body) return new URLSearchParams();
-    if (typeof body === "string") return new URLSearchParams(body);
+    if (typeof body === "string") {
+      const trimmed = body.trim();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        try {
+          const j = JSON.parse(trimmed);
+          const p = new URLSearchParams();
+          if (j && typeof j === "object" && !Array.isArray(j)) {
+            for (const [k, v] of Object.entries(j)) p.append(k, typeof v === "string" ? v : String(v ?? ""));
+          }
+          return p;
+        } catch {}
+      }
+      return new URLSearchParams(body);
+    }
     if (body instanceof URLSearchParams) return body;
     if (body instanceof FormData) {
       const p = new URLSearchParams();
@@ -38,9 +51,20 @@
       return p;
     }
     if (body instanceof Blob) {
-      return body.text().then((t) => new URLSearchParams(t));
+      return body.text().then((t) => parseFormBody(t));
     }
     return new URLSearchParams();
+  }
+
+  function bodyFromRequest(input, init, url) {
+    if (init?.body != null) return Promise.resolve(init.body);
+    if (input instanceof Request) {
+      try { return input.clone().text(); } catch { return Promise.resolve(null); }
+    }
+    try {
+      const u = new URL(url, location.href);
+      return Promise.resolve(u.search.startsWith("?") ? u.search.slice(1) : u.search);
+    } catch { return Promise.resolve(null); }
   }
 
   function postToBridge(payload) {
@@ -61,6 +85,8 @@
   }
 
   function evalJk(jkSource) {
+    const trimmed = (jkSource ?? "").trim();
+    if (/^[0-9a-fA-F]{32}$/.test(trimmed)) return trimmed.toLowerCase();
     const fn = new Function(jkSource + "; return f();");
     const result = fn();
     if (typeof result !== "string") throw new Error("jk() lieferte keinen String");
@@ -114,6 +140,8 @@
 
   async function dispatch(endpoint, body) {
     const params = await Promise.resolve(parseFormBody(body));
+    const keys = [...params.keys()];
+    console.debug("[MyJD-MV3] CnL dispatch:", endpoint, "fields:", keys);
     if (endpoint === "/flash/add") return handleFlashAdd(params);
     if (endpoint === "/flash/addcrypted2") return handleAddcrypted2(params);
     if (endpoint === "/flash/addcrypted") {
@@ -128,7 +156,7 @@
       const ep = endpointOf(url);
       if (ep === "/jdcheck.js" || ep === "/jdcheck") return fakeJdcheck();
       if (ep === "/flash/add" || ep === "/flash/addcrypted2" || ep === "/flash/addcrypted") {
-        const body = init?.body ?? (input instanceof Request ? await input.clone().text() : null);
+        const body = await bodyFromRequest(input, init, url);
         dispatch(ep, body).catch((e) => console.error("[MyJD-MV3]", e));
         return fakeOk();
       }
@@ -154,7 +182,14 @@
         const isJdcheck = ep === "/jdcheck.js" || ep === "/jdcheck";
         const isFlash = ep === "/flash/add" || ep === "/flash/addcrypted2" || ep === "/flash/addcrypted";
         if (isJdcheck || isFlash) {
-          if (isFlash) dispatch(ep, body).catch((e) => console.error("[MyJD-MV3]", e));
+          let effectiveBody = body;
+          if (!effectiveBody) {
+            try {
+              const u = new URL(hookUrl, location.href);
+              effectiveBody = u.search.startsWith("?") ? u.search.slice(1) : u.search;
+            } catch {}
+          }
+          if (isFlash) dispatch(ep, effectiveBody).catch((e) => console.error("[MyJD-MV3]", e));
           const responseBody = isJdcheck ? "jdownloader=true; var jcheck = true;" : "success";
           try {
             Object.defineProperty(xhr, "readyState", { get: () => 4, configurable: true });
@@ -185,6 +220,54 @@
   }
   HookedXHR.prototype = OrigXHR.prototype;
   window.XMLHttpRequest = HookedXHR;
+
+  function handleScriptElement(node) {
+    if (!node || node.tagName !== "SCRIPT") return;
+    const src = node.getAttribute("src") || node.src;
+    if (!src || !isCnlUrl(src)) return;
+    const ep = endpointOf(src);
+    if (ep === "/jdcheck.js" || ep === "/jdcheck") {
+      node.removeAttribute("src");
+      setTimeout(() => {
+        try { node.dispatchEvent(new Event("load")); } catch {}
+      }, 0);
+      try { window.jdownloader = true; } catch {}
+      try { window.jcheck = true; } catch {}
+      return;
+    }
+    if (ep === "/flash/add" || ep === "/flash/addcrypted2" || ep === "/flash/addcrypted") {
+      try {
+        const u = new URL(src, location.href);
+        const body = u.search.startsWith("?") ? u.search.slice(1) : u.search;
+        console.debug("[MyJD-MV3] JSONP CnL trigger:", ep);
+        dispatch(ep, body).catch((e) => console.error("[MyJD-MV3]", e));
+      } catch (e) {
+        console.error("[MyJD-MV3] JSONP parse failed:", e);
+      }
+      node.removeAttribute("src");
+      setTimeout(() => {
+        try { node.dispatchEvent(new Event("load")); } catch {}
+      }, 0);
+    }
+  }
+
+  const scriptObserver = new MutationObserver((mutations) => {
+    for (const mut of mutations) {
+      for (const node of mut.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        if (node.tagName === "SCRIPT") {
+          handleScriptElement(node);
+        } else if (node.querySelectorAll) {
+          for (const s of node.querySelectorAll("script[src]")) handleScriptElement(s);
+        }
+      }
+    }
+  });
+  try {
+    scriptObserver.observe(document.documentElement || document, { childList: true, subtree: true });
+  } catch (e) {
+    console.warn("[MyJD-MV3] script observer failed:", e);
+  }
 
   console.debug("[MyJD-MV3] CnL hook installed (full)");
 })();
