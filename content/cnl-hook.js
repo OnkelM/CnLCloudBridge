@@ -221,6 +221,29 @@
   HookedXHR.prototype = OrigXHR.prototype;
   window.XMLHttpRequest = HookedXHR;
 
+  const OrigFormSubmit = HTMLFormElement.prototype.submit;
+  HTMLFormElement.prototype.submit = function () {
+    try {
+      const action = this.action || this.getAttribute("action") || "";
+      if (action && isCnlUrl(action)) {
+        const ep = endpointOf(action);
+        if (ep === "/flash/add" || ep === "/flash/addcrypted2" || ep === "/flash/addcrypted") {
+          const fd = new FormData(this);
+          const params = new URLSearchParams();
+          for (const [k, v] of fd.entries()) {
+            params.append(k, typeof v === "string" ? v : "");
+          }
+          console.debug("[MyJD-MV3] intercepted form.submit() to", ep);
+          dispatch(ep, params).catch((e) => console.error("[MyJD-MV3]", e));
+          return; // swallow the real submit — never navigates
+        }
+      }
+    } catch (e) {
+      console.warn("[MyJD-MV3] form submit hook failed, falling back:", e);
+    }
+    return OrigFormSubmit.call(this);
+  };
+
   function handleScriptElement(node) {
     if (!node || node.tagName !== "SCRIPT") return;
     const src = node.getAttribute("src") || node.src;
