@@ -188,7 +188,22 @@ export async function addLinks(session, deviceId, { links, sourceUrl, autostart 
 
 export async function pollDevice(session, deviceId) {
   const params = [{ jdState: true, aggregatedNumbers: true }];
-  return deviceCall(session, deviceId, "/polling/poll", params);
+  const raw = await deviceCall(session, deviceId, "/polling/poll", params);
+  return unwrapPollEvents(raw);
+}
+
+function unwrapPollEvents(raw) {
+  if (!raw || !Array.isArray(raw.data)) return raw;
+  const result = {};
+  for (const event of raw.data) {
+    if (!event || typeof event.eventName !== "string") continue;
+    if (event.eventName === "jdState") {
+      result.jdState = event.eventData?.data;
+    } else if (event.eventName === "aggregatedNumbers") {
+      result.aggregatedNumbers = event.eventData?.data;
+    }
+  }
+  return result;
 }
 
 export async function startDownloads(session, deviceId) {
@@ -197,6 +212,10 @@ export async function startDownloads(session, deviceId) {
 
 export async function pauseDownloads(session, deviceId, paused) {
   return deviceCall(session, deviceId, "/downloadcontroller/pause", [!!paused]);
+}
+
+export async function stopDownloads(session, deviceId) {
+  return deviceCall(session, deviceId, "/downloadcontroller/stop", []);
 }
 
 export async function connectWithSecret(session) {

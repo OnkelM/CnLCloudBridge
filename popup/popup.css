@@ -25,8 +25,11 @@ form button[disabled] { opacity: 0.6; cursor: progress; }
 .row { padding: 12px 16px; border-top: 1px solid #b8d6d6; }
 .row:first-of-type { border-top: 0; }
 .row-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; }
+.row-head-inline { justify-content: flex-start; gap: 8px; }
 .toggle { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
 .toggle input { width: 18px; height: 18px; }
+.toggle.toggle-inline { margin: 6px 0 0 26px; }
+.toggle.toggle-inline input { width: 40px; height: 18px; }
 .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0 26px; line-height: 1.4; }
 .link-btn { background: transparent; border: 0; color: #0f766e; cursor: pointer; font-size: 12px; }
 .devices { list-style: none; margin: 0; padding: 0; }
@@ -44,6 +47,7 @@ form button[disabled] { opacity: 0.6; cursor: progress; }
 .devices.clickable .device:hover { background: #b8d6d6; }
 .devices.clickable .device.offline { opacity: 0.5; cursor: not-allowed; }
 .devices.clickable .device.sending { opacity: 0.6; pointer-events: none; }
+.countdown { text-transform: none; font-weight: bold; color: var(--accent); }
 
 .brand-line { color: var(--accent); font-weight: 700; letter-spacing: 0.5px; }
 .bar .brand-line { color: var(--accent); }
@@ -54,8 +58,9 @@ form button[disabled] { opacity: 0.6; cursor: progress; }
 .device-name { color: var(--bg); font-weight: 600; text-decoration: none; font-size: 14px; }
 .device-name:hover { text-decoration: underline; }
 .device-name .ext-arrow { font-size: 11px; opacity: 0.7; margin-left: 2px; }
-.play-pause { background: #e0eded; border: 0; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 14px; }
-.play-pause:hover { background: #b8d6d6; }
+.buttons { display: flex; gap: 5px; }
+.play-pause, .stop { background: #e0eded; border: 0; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 14px; }
+.play-pause:hover, .stop:hover { background: #b8d6d6; }
 .play-pause[disabled] { opacity: 0.5; cursor: progress; }
 
 .device-card-stats { display: flex; gap: 12px; padding: 6px 10px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }

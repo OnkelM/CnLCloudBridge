@@ -10,16 +10,19 @@ import {
   pollDevice,
   startDownloads,
   pauseDownloads,
+  stopDownloads,
   MyJdApiError,
 } from "./myjd-api.js";
 import { bytesToHex, hexToBytes } from "../shared/crypto.js";
 
-const STORAGE_LOCAL_KEYS = ["email", "loginSecret", "deviceSecret", "cnlEnabled"];
+const STORAGE_LOCAL_KEYS = ["email", "loginSecret", "deviceSecret", "cnlEnabled", "cnlAutoSelect", "cnlAutoSelectDelay"];
 const STORAGE_SESSION_KEYS = ["sessionToken", "regainToken", "serverEncToken", "deviceEncToken"];
 const NOTIFICATION_ID = "myjd-mv3";
 
 let session = null;
 let cnlEnabled = true;
+let cnlAutoSelect = true;
+let cnlAutoSelectDelay = 5;
 let cachedDevices = null;
 let cachedDevicesAt = 0;
 const DEVICE_CACHE_MS = 60_000;
@@ -34,6 +37,8 @@ let lastFailNotifyAt = 0;
 async function loadFromStorage() {
   const local = await chrome.storage.local.get(STORAGE_LOCAL_KEYS);
   cnlEnabled = local.cnlEnabled !== false;
+  cnlAutoSelect = local.cnlAutoSelect !== false;
+  cnlAutoSelectDelay = local.cnlAutoSelectDelay ?? 5;
   if (local.email && local.loginSecret && local.deviceSecret) {
     session = MyJdSession.restorePersistent({
       email: local.email,
@@ -226,6 +231,8 @@ async function buildState() {
       view: POPUP_VIEW.PICKER,
       email: session.email,
       cnlEnabled,
+      cnlAutoSelect,
+      cnlAutoSelectDelay,
       devices,
       pending: { id: [...pending.keys()].pop(), urls: lastPending.urls, source: lastPending.source },
     };
@@ -240,11 +247,11 @@ async function buildState() {
         session = null;
         return { view: POPUP_VIEW.LOGGED_OUT, cnlEnabled, error: "Session abgelaufen" };
       }
-      return { view: POPUP_VIEW.IDLE, email: session.email, cnlEnabled, devices: [], offline: true };
+      return { view: POPUP_VIEW.IDLE, email: session.email, cnlEnabled, cnlAutoSelect, cnlAutoSelectDelay, devices: [], offline: true };
     }
   }
   const devices = await getDevices().catch(() => []);
-  return { view: POPUP_VIEW.IDLE, email: session.email, cnlEnabled, devices };
+  return { view: POPUP_VIEW.IDLE, email: session.email, cnlEnabled, cnlAutoSelect, cnlAutoSelectDelay, devices };
 }
 
 async function handleLogin(email, password) {
@@ -263,12 +270,26 @@ async function handleLogout() {
   cachedDevices = null;
   await clearAllStorage();
   await chrome.storage.local.set({ cnlEnabled });
+  await chrome.storage.local.set({ cnlAutoSelect });
+  await chrome.storage.local.set({ cnlAutoSelectDelay });
   return { view: POPUP_VIEW.LOGGED_OUT, cnlEnabled };
 }
 
 async function handleSetCnlEnabled(enabled) {
   cnlEnabled = !!enabled;
   await chrome.storage.local.set({ cnlEnabled });
+  return { ok: true };
+}
+
+async function handleSetCnlAutoSelect(enabled) {
+  cnlAutoSelect = !!enabled;
+  await chrome.storage.local.set({ cnlAutoSelect });
+  return { ok: true };
+}
+
+async function handleSetCnlAutoSelectDelay(delay) {
+  cnlAutoSelectDelay = Number(delay) || 5;
+  await chrome.storage.local.set({ cnlAutoSelectDelay });
   return { ok: true };
 }
 
@@ -330,6 +351,7 @@ chrome.runtime.onConnect.addListener((port) => {
     if (popupPort === port) {
       popupPort = null;
       stopPolling();
+      pending.clear();
     }
   });
 });
@@ -350,6 +372,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         case MSG.SET_CNL_ENABLED:
           sendResponse(await handleSetCnlEnabled(msg.enabled));
           break;
+        case MSG.SET_CNL_AUTOSELECT:
+          sendResponse(await handleSetCnlAutoSelect(msg.enabled));
+          break;
+        case MSG.SET_CNL_AUTOSELECT_DELAY:
+          sendResponse(await handleSetCnlAutoSelectDelay(msg.delay));
+          break;
         case MSG.REFRESH_DEVICES: {
           await ensureSessionAlive();
           const devices = await getDevices(true);
@@ -368,6 +396,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         case MSG.PAUSE_DOWNLOADS:
           await ensureSessionAlive();
           await withReconnectRetry(() => pauseDownloads(session, msg.deviceId, msg.paused));
+          sendResponse({ ok: true });
+          break;
+        case MSG.STOP_DOWNLOADS:
+          await ensureSessionAlive();
+          await withReconnectRetry(() => stopDownloads(session, msg.deviceId));
           sendResponse({ ok: true });
           break;
         case MSG.GET_PENDING: {

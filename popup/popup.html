@@ -55,6 +55,17 @@
           <p class="hint">Fängt lokale Click'n'Load-Aufrufe ab und sendet sie über MyJDownloader an verbundene JDownloader.</p>
         </div>
         <div class="row">
+          <label class="toggle">
+            <input type="checkbox" id="cnl-toggle-settings-autoselect" />
+            <span>Gerät automatisch wählen</span>
+          </label>
+          <p class="hint">Wählt das erste aktive Gerät nach Ablauf des Timers automatisch aus.</p>
+          <label class="toggle toggle-inline">
+            <span>Wartezeit (Sekunden):</span>
+            <input type="number" id="cnl-toggle-settings-autoselect-delay" min="1" max="60" step="1" value="5" />
+          </label>
+        </div>
+        <div class="row">
           <button class="logout-btn" id="settings-logout">Logout</button>
         </div>
       </section>
@@ -72,6 +83,12 @@
           <div class="row-head"><span>An welches Gerät?</span></div>
           <ul class="devices clickable" id="picker-devices"></ul>
           <p class="empty" id="picker-empty" hidden>Keine Geräte verbunden.</p>
+        </div>
+        <div class="row" id="picker-countdown">
+          <div class="row-head row-head-inline">
+            <span>Autoselect Countdown: </span>
+            <span class="countdown" id="countdown"></span>
+          </div>
         </div>
         <p class="error" id="picker-error" hidden></p>
       </section>

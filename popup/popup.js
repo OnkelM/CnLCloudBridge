@@ -14,6 +14,10 @@ const loadingView = document.getElementById("view-loading");
 let currentPendingId = null;
 let currentEmail = "";
 let currentCnlEnabled = true;
+let currentCnlAutoSelect = true;
+let currentCnlAutoSelectSeconds = 5;
+let autoSelectTimeout = null;
+let autoSelectInterval = null;
 let lastIdleState = null;
 let inSettings = false;
 
@@ -41,6 +45,9 @@ async function refreshState() {
 function render(state) {
   if (!state) return;
   currentPendingId = state?.pending?.id ?? null;
+  currentCnlEnabled = state.cnlEnabled !== false;
+  currentCnlAutoSelect = state.cnlAutoSelect !== false;
+  currentCnlAutoSelectSeconds = state.cnlAutoSelectDelay ?? 5;
   if (state.view === POPUP_VIEW.LOGGED_OUT) {
     inSettings = false;
     showView(POPUP_VIEW.LOGGED_OUT);
@@ -54,7 +61,6 @@ function render(state) {
   } else if (state.view === POPUP_VIEW.IDLE) {
     lastIdleState = state;
     currentEmail = state.email ?? "";
-    currentCnlEnabled = state.cnlEnabled !== false;
     if (inSettings) {
       renderSettings();
     } else {
@@ -120,11 +126,20 @@ function buildDeviceCard(d) {
   a.appendChild(document.createTextNode(" "));
   a.appendChild(arrow);
   head.appendChild(a);
+  const buttons = document.createElement("span");
+  buttons.className = "buttons";
+  head.appendChild(buttons);
+  const btnStop = document.createElement("button");
+  btnStop.className = "stop";
+  btnStop.disabled = true;
+  btnStop.hidden = true;
+  btnStop.textContent = "⏹";
+  buttons.appendChild(btnStop);
   const btn = document.createElement("button");
   btn.className = "play-pause";
   btn.dataset.state = "idle";
   btn.textContent = "▶";
-  head.appendChild(btn);
+  buttons.appendChild(btn);
   li.appendChild(head);
 
   const stats = document.createElement("div");
@@ -145,10 +160,23 @@ function renderSettings() {
   showView(VIEW_SETTINGS);
   document.getElementById("settings-email").textContent = currentEmail;
   document.getElementById("cnl-toggle-settings").checked = currentCnlEnabled;
+  document.getElementById("cnl-toggle-settings-autoselect").checked = currentCnlAutoSelect;
+  document.getElementById("cnl-toggle-settings-autoselect-delay").value = currentCnlAutoSelectSeconds;
 }
 
 function renderPicker(state) {
+  if (autoSelectTimeout) {
+    clearTimeout(autoSelectTimeout);
+    autoSelectTimeout = null;
+  }
+  if (autoSelectInterval) {
+    clearInterval(autoSelectInterval);
+    autoSelectInterval = null;
+  }
   showView(POPUP_VIEW.PICKER);
+  document.getElementById("picker-countdown").hidden = !currentCnlAutoSelect;
+  const countdownEl = document.getElementById("countdown");
+  countdownEl.textContent = "";
   document.getElementById("picker-email").textContent = state.email ?? "";
   const urls = state.pending?.urls ?? [];
   document.getElementById("picker-count").textContent = `${urls.length} Link${urls.length === 1 ? "" : "s"}`;
@@ -175,6 +203,7 @@ function renderPicker(state) {
     return;
   }
   empty.hidden = true;
+  let firstOnlineDeviceEl = null;
   for (const d of state.devices) {
     const li = document.createElement("li");
     const isOnline = isDeviceOnline(d);
@@ -188,7 +217,50 @@ function renderPicker(state) {
     nm.textContent = d.name ?? d.id;
     li.appendChild(nm);
     ulDev.appendChild(li);
+    if (isOnline && !firstOnlineDeviceEl) firstOnlineDeviceEl = li;
   }
+  if (currentPendingId && firstOnlineDeviceEl && currentCnlAutoSelect) {
+    let timeLeft = currentCnlAutoSelectSeconds
+    countdownEl.textContent = `${timeLeft}s`;
+    autoSelectInterval = setInterval(() => {
+      timeLeft -= 1;
+      if (timeLeft > 0) { countdownEl.textContent = `${timeLeft}s`; }
+      else {
+        countdownEl.textContent = "Sende...";
+        clearInterval(autoSelectInterval);
+        autoSelectInterval = null;
+      }
+    }, 1000);
+    autoSelectTimeout = setTimeout(() => {
+      if (firstOnlineDeviceEl && document.body.contains(firstOnlineDeviceEl)) selectDevice(firstOnlineDeviceEl);
+    }, currentCnlAutoSelectSeconds * 1000);
+  }
+}
+
+async function selectDevice(liElement) {
+  if (autoSelectTimeout) {
+    clearTimeout(autoSelectTimeout);
+    autoSelectTimeout = null;
+  }
+  if (autoSelectInterval) {
+    clearInterval(autoSelectInterval);
+    autoSelectInterval = null;
+  }
+  if (liElement.classList.contains("offline")) return;
+  const requestId = currentPendingId;
+  const deviceId = liElement.dataset.deviceId;
+  const errEl = document.getElementById("picker-error");
+  errEl.hidden = true;
+  liElement.classList.add("sending");
+  const res = await send({ type: MSG.PICK_DEVICE, requestId, deviceId });
+  if (res?.error) {
+    liElement.classList.remove("sending");
+    errEl.textContent = res.error;
+    errEl.hidden = false;
+    return;
+  }
+  await refreshState();
+  window.close();
 }
 
 document.getElementById("login-form").addEventListener("submit", async (e) => {
@@ -230,6 +302,16 @@ document.getElementById("cnl-toggle-settings").addEventListener("change", async 
   await send({ type: MSG.SET_CNL_ENABLED, enabled: e.target.checked });
 });
 
+document.getElementById("cnl-toggle-settings-autoselect").addEventListener("change", async (e) => {
+  currentCnlAutoSelect = e.target.checked;
+  await send({ type: MSG.SET_CNL_AUTOSELECT, enabled: e.target.checked });
+});
+
+document.getElementById("cnl-toggle-settings-autoselect-delay").addEventListener("change", async (e) => {
+  currentCnlAutoSelectSeconds = parseInt(e.target.value, 10) || 5;
+  await send({ type: MSG.SET_CNL_AUTOSELECT_DELAY, delay: currentCnlAutoSelectSeconds });
+});
+
 document.getElementById("refresh-devices-btn").addEventListener("click", async () => {
   const btn = document.getElementById("refresh-devices-btn");
   btn.disabled = true;
@@ -245,47 +327,45 @@ document.getElementById("refresh-devices-btn").addEventListener("click", async (
 });
 
 document.getElementById("devices-list").addEventListener("click", async (e) => {
+  const card = e.target.closest("li.device-card"); if (!card) return;
   const btn = e.target.closest("button.play-pause");
-  if (!btn) return;
-  const card = btn.closest("li.device-card");
-  if (!card) return;
+  const btnStop = e.target.closest("button.stop");
   const deviceId = card.dataset.deviceId;
-  const wasRunning = btn.dataset.state === "running";
-  btn.disabled = true;
-  const prevText = btn.textContent;
-  btn.textContent = wasRunning ? "▶" : "⏸";
-  const msgType = wasRunning ? MSG.PAUSE_DOWNLOADS : MSG.START_DOWNLOADS;
-  const payload = wasRunning
-    ? { type: msgType, deviceId, paused: true }
-    : { type: msgType, deviceId };
-  const res = await send(payload);
-  btn.disabled = false;
-  if (res?.error) {
-    btn.textContent = prevText;
-    console.error("play/pause failed:", res.error);
+  if (btn){
+    const wasRunning = btn.dataset.state === "running";
+    btn.disabled = true;
+    const prevText = btn.textContent;
+    const msgType = wasRunning ? MSG.PAUSE_DOWNLOADS : MSG.START_DOWNLOADS;
+    const payload = wasRunning
+      ? { type: msgType, deviceId, paused: true }
+      : { type: msgType, deviceId };
+    const res = await send(payload);
+    btn.disabled = false;
+    if (res?.error) {
+      btn.textContent = prevText;
+      console.error("play/pause failed:", res.error);
+    }
+  }
+  if (btnStop){
+    btnStop.disabled = true;
+    const res = await send({ type: MSG.STOP_DOWNLOADS, deviceId });
+    if (res?.error) {
+      btnStop.disabled = false;
+      console.error("stop failed:", res.error);
+    }
+    btnStop.hidden = true;
   }
 });
 
 document.getElementById("picker-devices").addEventListener("click", async (e) => {
   const li = e.target.closest("li.device");
   if (!li) return;
-  if (li.classList.contains("offline")) return;
-  const requestId = currentPendingId;
-  const deviceId = li.dataset.deviceId;
-  const errEl = document.getElementById("picker-error");
-  errEl.hidden = true;
-  li.classList.add("sending");
-  const res = await send({ type: MSG.PICK_DEVICE, requestId, deviceId });
-  if (res?.error) {
-    li.classList.remove("sending");
-    errEl.textContent = res.error;
-    errEl.hidden = false;
-    return;
-  }
-  window.close();
+  selectDevice(li);
 });
 
 document.getElementById("picker-cancel").addEventListener("click", async () => {
+  if (autoSelectTimeout) clearTimeout(autoSelectTimeout);
+  if (autoSelectInterval) clearInterval(autoSelectInterval);
   if (currentPendingId) await send({ type: MSG.CANCEL_PENDING, requestId: currentPendingId });
   window.close();
 });
@@ -320,16 +400,17 @@ function applyDeviceStats(deviceId, raw) {
   stats.classList.remove("muted-all");
 
   const agg = raw?.aggregatedNumbers ?? raw ?? {};
-  const jdState = raw?.jdState ?? raw?.state ?? "IDLE";
+  const resolvedState = raw?.jdState ?? raw?.state ?? "IDLE";
+  const jdState = resolvedState === "STOPPED_STATE" ? "STOPPED" : resolvedState;
 
-  const speed = agg.speed ?? 0;
+  const speed = agg.downloadSpeed ?? 0;
   const finished = agg.finishedLinks ?? agg.finished ?? agg.linksFinished ?? 0;
   const loaded = agg.bytesLoaded ?? agg.loadedBytes ?? 0;
   const total = agg.bytesTotal ?? agg.totalBytes ?? 0;
 
   setStatVal(card, "speed", formatSpeed(speed));
   setStateDot(card, jdState);
-  setStatVal(card, "finished", String(finished));
+  setStatVal(card, "finished", finished === 0 ? "-" : String(finished));
   setStatVal(card, "bytes", `${formatBytes(loaded)} / ${formatBytes(total)}`);
 
   const btn = card.querySelector(".play-pause");
@@ -337,6 +418,13 @@ function applyDeviceStats(deviceId, raw) {
     const running = String(jdState).toUpperCase() === "RUNNING";
     btn.dataset.state = running ? "running" : "paused";
     btn.textContent = running ? "⏸" : "▶";
+  }
+  
+  const btnStop = card.querySelector(".stop");
+  if (btnStop) {
+    const running = String(jdState).toUpperCase() === "RUNNING";
+    btnStop.disabled = !running;
+    btnStop.hidden = !running;
   }
 }
 
@@ -357,7 +445,7 @@ function setStateDot(card, jdState) {
   const val = card.querySelector(".stat.state .val");
   if (!dot || !val) return;
   const s = String(jdState).toUpperCase();
-  dot.className = "dot " + (s === "RUNNING" ? "running" : s === "PAUSED" ? "paused" : "idle");
+  dot.className = "dot " + (s === "RUNNING" ? "running" : s === "PAUSED" ? "paused" : s == "STOPPED_STATE" ? "stopped" : "idle");
   val.textContent = s;
 }
 
